@@ -431,7 +431,11 @@ impl Note {
     }
 
     fn queue_update(&self, invalidate_cache: bool) {
-        self.invalid_cache.set(invalidate_cache);
+        // A pending text change must survive a later move or resize, so only ever set the flag here;
+        // get_info() clears it once the text has been read back.
+        if invalidate_cache {
+            self.invalid_cache.set(true);
+        }
 
         if let Some(id) = self.changed_timer_id.borrow_mut().take() {
             id.remove();
