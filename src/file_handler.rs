@@ -103,7 +103,16 @@ impl FileHandler {
     pub fn load_notes(&self) {
         match std::fs::read_to_string(config_path()).map_err(|e| e.to_string()).and_then(|d| parse_notes(&d).map_err(|e| e.to_string())) {
             Ok(lists) => *self.notes_lists.borrow_mut() = lists,
-            Err(e) => eprintln!("sticky: could not read {}: {e}", config_path().display()),
+            Err(e) => {
+                // Keep the unreadable file: the next save would otherwise replace it and the notes would be gone.
+                let path = config_path();
+                let kept = config_dir().join(format!("notes.json.unreadable-{}", now()));
+                eprintln!("sticky: could not read {}: {e}", path.display());
+                match std::fs::rename(&path, &kept) {
+                    Ok(()) => eprintln!("sticky: the file was moved to {}", kept.display()),
+                    Err(e) => eprintln!("sticky: could not move it aside: {e}"),
+                }
+            }
         }
     }
 
