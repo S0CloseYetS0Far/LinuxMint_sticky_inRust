@@ -158,7 +158,12 @@ impl App {
         if options.contains("autostart") {
             let settings = gio::Settings::new(SCHEMA);
             if !settings.boolean("autostart") {
-                std::process::exit(0);
+                // Only a fresh instance exits. When Sticky is already running this command line was forwarded
+                // from another process, and quitting here would close the user's notes.
+                if !self.has_activated.get() {
+                    self.gtk_app.quit();
+                }
+                return 0;
             } else {
                 self.autostart_mode.set(true);
             }
