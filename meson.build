@@ -11,6 +11,21 @@ sysconfdir = get_option('sysconfdir')
 
 podir = meson.source_root() / 'po'
 
+# The program itself is written in Rust and built with cargo. It is installed
+# as /usr/lib/sticky/sticky and started by the usr/bin/sticky wrapper.
+find_program('cargo')
+cargo_build = find_program('meson/cargo-build.sh')
+
+custom_target('sticky',
+    output: 'sticky',
+    command: [cargo_build, meson.source_root(), meson.current_build_dir(), '@OUTPUT@'],
+    console: true,
+    build_always_stale: true,
+    build_by_default: true,
+    install: true,
+    install_dir: prefix / 'lib' / 'sticky',
+)
+
 subdir('data')
 subdir('po')
 

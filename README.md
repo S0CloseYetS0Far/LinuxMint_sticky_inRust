@@ -1,57 +1,60 @@
-# Sticky
-![build](https://github.com/linuxmint/sticky/actions/workflows/build.yml/badge.svg)
+# Sticky (Rust port)
+![rust](https://github.com/S0CloseYetS0Far/LinuxMint_sticky_inRust/actions/workflows/rust.yml/badge.svg)
 
-Sticky is a note-taking app for the Linux desktop that simulates traditional "sticky note" style stationery on your desktop. Some of its features include basic text formatting (bold, italics, monospaced, etc.), spell-checking, a tray icon for controlling note visibility, color notes, manual and automatic backups, and a manager to organize your notes into groups. Sticky is written in Python, and uses the GTK3 toolkit
+Sticky is a note-taking app for the Linux desktop that simulates traditional "sticky note" style stationery on your desktop. Some of its features include basic text formatting (bold, italics, monospaced, etc.), spell-checking, a tray icon for controlling note visibility, color notes, manual and automatic backups, and a manager to organize your notes into groups.
+
+This is a port of [linuxmint/sticky](https://github.com/linuxmint/sticky) from Python to Rust. It uses GTK3 through [gtk-rs](https://gtk-rs.org), plus small hand-written bindings for libxapp and gspell (`src/ffi.rs`). It keeps the same settings schema (`org.x.sticky`), notes file (`~/.config/sticky/notes.json`), D-Bus interface, translations and data files, so it can replace the Python version in place.
 
 ![img](https://linuxmint.com/pictures/screenshots/uma/sticky.png)
 
+## Source layout
+
+| File | Python original | What it does |
+|------|-----------------|--------------|
+| `src/app.rs` | `sticky.py` (`Application`) | command line, D-Bus, tray icon, note placement |
+| `src/note.rs` | `sticky.py` (`Note`) | a note window |
+| `src/settings_window.rs` | `sticky.py` (`SettingsWindow`, `ShortcutsWindow`) | preferences and shortcuts |
+| `src/note_buffer.rs`, `src/check_box.rs` | `note_buffer.py` | formatting, checklists, links, undo/redo |
+| `src/manager.rs` | `manager.py` | the notes manager window |
+| `src/file_handler.rs`, `src/notes.rs` | `common.py` (`FileHandler`) | loading, saving, backups |
+| `src/widgets.rs` | `common.py` (`HoverBox`, `confirm`) | shared widgets |
+| `src/util.rs` | `util.py` | URL detection, markup parsing, Gnote import |
 
 ## How to build and install
 
-### Download the source code and enter the source directory
-```
-# Clone this repo:
-git clone https://github.com/collinss/sticky.git
+Build dependencies (Mint/Debian/Ubuntu): `cargo rustc pkg-config libgtk-3-dev libgspell-1-dev libxapp-dev meson`.
 
-# Enter the folder:
-cd sticky
 ```
+git clone https://github.com/S0CloseYetS0Far/LinuxMint_sticky_inRust.git
+cd LinuxMint_sticky_inRust
+cargo build --release
+cargo test -- --test-threads=1    # the GTK tests need a display
+```
+
 ### Mint, Debian, Ubuntu and derivatives:
 ```
-# Try to build. If this fails, it's probably due to missing dependencies.
-# Take note of these packages, install them using apt-get:
 dpkg-buildpackage --no-sign
-
-# Once that succeeds, install:
 cd ..
 sudo dpkg -i sticky*.deb
-
-# If this fails, make note of missing runtime dependencies (check list below),
-# install them, repeat previous command (apt-get install -f may also work).
 ```
 ### Build and install using Meson
+Meson builds the Rust program with cargo and installs it as `/usr/lib/sticky/sticky`, together with the data files:
 ```
-Sticky has support for the meson build system. See https://mesonbuild.com/Running-Meson.html for more details on using meson to build and install.
+meson setup builddir --prefix=/usr
+meson compile -C builddir
+sudo meson install -C builddir
 ```
-### Otherwise you can copy files directly to the file system:
+### Running from the source tree
+`STICKY_DATA_DIR` points the program at the UI and CSS files:
 ```
-sudo cp -r usr/* /usr/
-sudo cp etc/xdg/autostart/sticky.desktop /etc/xdg/autostart/
-sudo cp data/sticky.desktop.in /usr/share/applications/sticky.desktop
-sed -i 's|@bindir@|/usr/bin|' data/org.x.sticky.service.in
-sudo cp data/org.x.sticky.service.in /usr/share/dbus-1/services/org.x.sticky.service
+glib-compile-schemas usr/share/glib-2.0/schemas
+GSETTINGS_SCHEMA_DIR=usr/share/glib-2.0/schemas STICKY_DATA_DIR=usr/share/sticky GDK_BACKEND=x11 cargo run
 ```
-> [!NOTE]
-> This method doesn't install translations, so Sticky may not get translated if you install it this way.
 
 #### runtime deps
-- gir1.2-glib-2.0
-- gir1.2-gtk-3.0 (>= 3.20.0)
-- gir1.2-xapp-1.0 (>= 1.6.0)
-- gir1.2-gspell-1
-- python3
-- python3-gi
-- python3-xapp (>= 1.6.0)
+- libgtk-3-0 (>= 3.22)
+- libxapp1 (>= 2.2.0)
+- libgspell-1-3
 
 ## Controlling Sticky via DBUS
 Sticky offers the following dbus methods and signals:
@@ -71,7 +74,7 @@ dbus-monitor "type='signal',interface='org.x.sticky',member=NotesChanged"
 ```
 
 ## Translations
-Please use Launchpad to translate Sticky Notes: https://translations.launchpad.net/linuxmint/latest/.
+Please use Launchpad to translate Sticky Notes (upstream): https://translations.launchpad.net/linuxmint/latest/.
 
 The PO files in this project are imported from there.
 

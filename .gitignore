@@ -6,3 +6,5 @@ debian/debhelper-build-stamp
 debian/*.substvars
 debian/*.log
 usr/share/locale/
+/target/
+/builddir/

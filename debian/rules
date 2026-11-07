@@ -3,11 +3,14 @@
 DEB_VERSION := $(shell dpkg-parsechangelog | egrep '^Version:' | cut -f 2 -d ' ')
 
 %:
-	dh $@ --with=python3
+	dh $@
 
-# Inject version number in the code
+override_dh_auto_test:
+	cargo test --release --locked
+
+# Inject version number in the text files (the program takes its version from Cargo.toml)
 override_dh_installdeb:
 	dh_installdeb
-	for pkg in $$(dh_listpackages -i); do \
-		find debian/$$pkg -type f -exec sed -i -e s/__DEB_VERSION__/$(DEB_VERSION)/g {} +; \
+	for pkg in $$(dh_listpackages -a); do \
+		grep -rlI __DEB_VERSION__ debian/$$pkg | xargs -r sed -i -e s/__DEB_VERSION__/$(DEB_VERSION)/g; \
 	done
