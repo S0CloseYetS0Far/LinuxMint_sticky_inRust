@@ -654,8 +654,8 @@ impl App {
         let max_y = workarea.y() + workarea.height();
 
         let settings = self.settings();
-        let x_end = x + settings.uint("default-height") as i32;
-        let y_end = y + settings.uint("default-width") as i32;
+        let x_end = x + settings.uint("default-width") as i32;
+        let y_end = y + settings.uint("default-height") as i32;
 
         if x < min_x || x_end > max_x || y < min_y || y_end > max_y {
             // the calculated location wont work, so put the new note near the top left corner
