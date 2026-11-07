@@ -28,6 +28,8 @@ pub fn data_dir() -> std::path::PathBuf {
 struct PreviewNote {
     info: NoteInfo,
     group_name: String,
+    /// Position in its group's note list.
+    index: usize,
 }
 
 impl PreviewNote {
@@ -319,7 +321,7 @@ pub struct NotesManager {
     remove_group_item: gtk::MenuItem,
     groups: RefCell<Vec<Rc<GroupEntry>>>,
     previews: RefCell<Vec<(gtk::FlowBoxChild, PreviewNote)>>,
-    dragged_note: RefCell<Option<NoteInfo>>,
+    dragged_note: RefCell<Option<PreviewNote>>,
     weak_self: RefCell<Weak<NotesManager>>,
 }
 
@@ -603,10 +605,10 @@ impl NotesManager {
         } else {
             let mut found = Vec::new();
             for group_name in self.file_handler.get_note_group_names() {
-                for info in self.file_handler.get_note_list(&group_name) {
+                for (index, info) in self.file_handler.get_note_list(&group_name).into_iter().enumerate() {
                     let title = info.title.clone().unwrap_or_default().to_lowercase();
                     if title.contains(&search_text) || clean_text(&info.text).contains(&search_text) {
-                        found.push(PreviewNote { info, group_name: group_name.clone() });
+                        found.push(PreviewNote { info, group_name: group_name.clone(), index });
                     }
                 }
             }
@@ -633,10 +635,10 @@ impl NotesManager {
         dnd_wrapper.set_above_child(true);
         dnd_wrapper.drag_source_set(gdk::ModifierType::BUTTON1_MASK, &note_targets(), gdk::DragAction::MOVE);
         let weak = self.weak();
-        let info = item.info.clone();
+        let dragged = item.clone();
         dnd_wrapper.connect_drag_begin(move |_, _| {
             if let Some(m) = weak.upgrade() {
-                *m.dragged_note.borrow_mut() = Some(info.clone());
+                *m.dragged_note.borrow_mut() = Some(dragged.clone());
             }
         });
         widget.add(&dnd_wrapper);
@@ -681,7 +683,8 @@ impl NotesManager {
             .file_handler
             .get_note_list(&group_name)
             .into_iter()
-            .map(|info| PreviewNote { info, group_name: group_name.clone() })
+            .enumerate()
+            .map(|(index, info)| PreviewNote { info, group_name: group_name.clone(), index })
             .collect();
         self.show_previews(items);
     }
@@ -694,10 +697,6 @@ impl NotesManager {
     fn selected_preview(&self) -> Option<PreviewNote> {
         let child = self.note_view.selected_children().into_iter().next()?;
         self.previews.borrow().iter().find(|(c, _)| *c == child).map(|(_, p)| p.clone())
-    }
-
-    fn get_selected_note(&self) -> Option<NoteInfo> {
-        self.selected_preview().map(|p| p.info)
     }
 
     /// Show an entry under the group list for the name of a new group.
@@ -780,12 +779,38 @@ impl NotesManager {
         });
     }
 
+    /// The notes of `item`'s group with `item` taken out. Notes are found by
+    /// position, not by value, so an identical copy is never removed with it.
+    fn list_without(&self, item: &PreviewNote) -> Option<Vec<NoteInfo>> {
+        let mut notes = self.file_handler.get_note_list(&item.group_name);
+        let index = if notes.get(item.index) == Some(&item.info) {
+            item.index
+        } else {
+            // the list changed since the previews were made
+            notes.iter().position(|n| *n == item.info)?
+        };
+        notes.remove(index);
+        Some(notes)
+    }
+
     fn remove_note(&self) {
-        let Some(selected) = self.get_selected_note() else { return };
-        let Some(group) = self.get_current_group() else { return };
-        let notes: Vec<NoteInfo> =
-            self.previews.borrow().iter().map(|(_, p)| p.info.clone()).filter(|info| *info != selected).collect();
-        self.file_handler.update_note_list(notes, &group);
+        let Some(selected) = self.selected_preview() else { return };
+        if let Some(notes) = self.list_without(&selected) {
+            self.file_handler.update_note_list(notes, &selected.group_name);
+        }
+    }
+
+    /// Move a note to the end of another group.
+    fn move_note(&self, item: &PreviewNote, new_group: &str) {
+        if item.group_name == new_group {
+            return;
+        }
+        let Some(old_list) = self.list_without(item) else { return };
+        let mut new_list = self.file_handler.get_note_list(new_group);
+        new_list.push(item.info.clone());
+
+        self.file_handler.update_note_list(new_list, new_group);
+        self.file_handler.update_note_list(old_list, &item.group_name);
     }
 
     fn remove_group(&self) {
@@ -795,29 +820,18 @@ impl NotesManager {
     }
 
     fn duplicate_note(&self) {
-        let Some(mut info) = self.get_selected_note() else { return };
-        let Some(group) = self.get_current_group() else { return };
+        let Some(selected) = self.selected_preview() else { return };
+        let mut info = selected.info;
         info.x += 50;
         info.y += 50;
-        let mut notes = self.file_handler.get_note_list(&group);
+        let mut notes = self.file_handler.get_note_list(&selected.group_name);
         notes.push(info);
-        self.file_handler.update_note_list(notes, &group);
+        self.file_handler.update_note_list(notes, &selected.group_name);
     }
 
     fn handle_drop(&self, new_group: &str) {
         let Some(dragged) = self.dragged_note.borrow_mut().take() else { return };
-        let Some(old_group) = self.get_current_group() else { return };
-
-        let mut new_list = self.file_handler.get_note_list(new_group);
-        new_list.push(dragged.clone());
-
-        let mut old_list = self.file_handler.get_note_list(&old_group);
-        if let Some(pos) = old_list.iter().position(|n| *n == dragged) {
-            old_list.remove(pos);
-        }
-
-        self.file_handler.update_note_list(new_list, new_group);
-        self.file_handler.update_note_list(old_list, &old_group);
+        self.move_note(&dragged, new_group);
     }
 
     fn handle_new_group_drop(&self) {
@@ -828,16 +842,8 @@ impl NotesManager {
             let dragged = m.dragged_note.borrow_mut().take();
             let mut name = None;
             if success {
-                if let (Some(dragged), Some(old), Some(new)) = (dragged, old_group.as_deref(), group_name.as_deref()) {
-                    let mut old_list = m.file_handler.get_note_list(old);
-                    if let Some(pos) = old_list.iter().position(|n| *n == dragged) {
-                        old_list.remove(pos);
-                    }
-                    let mut new_list = m.file_handler.get_note_list(new);
-                    new_list.push(dragged);
-
-                    m.file_handler.update_note_list(new_list, new);
-                    m.file_handler.update_note_list(old_list, old);
+                if let (Some(dragged), Some(new)) = (dragged, group_name.as_deref()) {
+                    m.move_note(&dragged, new);
                 }
                 name = group_name;
             }
