@@ -24,3 +24,17 @@ jobs:
         run: xvfb-run -a cargo test --locked -- --test-threads=1
       - name: Clippy
         run: cargo clippy --locked -- -D warnings
+
+  # Linux Mint 22 ships Rust 1.75; the Debian package must keep building with it.
+  msrv:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libgspell-1-dev libxapp-dev
+      - name: Install Rust 1.75
+        run: rustup toolchain install 1.75 --profile minimal
+      - name: Build with Rust 1.75
+        run: cargo +1.75 build --locked
