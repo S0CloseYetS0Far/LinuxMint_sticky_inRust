@@ -152,5 +152,51 @@ Please use Launchpad to translate Sticky Notes (upstream): https://translations.
 
 The PO files in this project are imported from there.
 
+## Contributing
+
+Contributions are welcome. A pull request is only reviewed if it follows these rules.
+
+### 1. Say whether AI was used, and which model
+
+Fill in the **AI disclosure** section of the pull request template (it appears when you open a PR):
+
+- **No AI used:** write `None`.
+- **AI used:** give the tool and the exact model with its version, for example `Claude Code, Claude Opus 5.5` or `GitHub Copilot, GPT-5`. Say which parts it wrote: all of the change, some functions, only tests, only the description, and so on.
+
+"An AI" or "ChatGPT" is not enough. Give the model name.
+
+### 2. Say whether you understand the code
+
+The template asks you to pick one:
+
+- **Yes:** you understand every line you are submitting. You can explain why it works and answer review questions about it without asking the AI again.
+- **Partly:** list the parts you do not fully understand, so reviewers can look at them closely.
+
+Pull requests that leave this blank are closed. "Partly" is allowed, but code that nobody understands, including the person submitting it, is not merged. That matters most for `unsafe` blocks and anything in `src/ffi.rs`.
+
+### 3. Sign off every commit and take responsibility for the code
+
+Every commit must end with a `Signed-off-by` line with your real name and email:
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+
+`git commit -s` adds it for you. If you forgot, `git commit --amend -s` fixes the last commit and `git rebase --signoff master` fixes all of them.
+
+Signing off means you state that:
+
+1. You wrote the change, or you have the right to submit it under the project's license (GPLv2), as described in the [Developer Certificate of Origin](https://developercertificate.org/).
+2. **You take responsibility for the code**, including any part an AI wrote. It is your contribution, and "the AI did it" is not an answer to a bug, a licence problem or a review question.
+3. You have built it and run it (`cargo build`, `cargo test -- --test-threads=1`, `cargo clippy -- -D warnings`) and checked that it does what the PR says.
+
+The PR template asks you to confirm these points. A `Co-Authored-By` line for an AI tool is fine in addition to your sign-off, but it never replaces it.
+
+### Other rules
+
+- One fix or feature per pull request, and one commit per logical change.
+- Reference the issue it fixes (`Fixes #12`).
+- Keep the settings schema, the `notes.json` format and the D-Bus interface compatible with the Python version, unless the PR is about changing them on purpose.
+
 ## License
 - Code: GPLv2
