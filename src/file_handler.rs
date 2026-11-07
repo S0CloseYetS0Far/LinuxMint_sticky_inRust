@@ -391,15 +391,39 @@ impl FileHandler {
         self.lists_changed.emit(&());
     }
 
-    pub fn change_group_name(&self, old_group: &str, new_group: &str) {
+    /// Rename a group. Returns false if nothing was renamed. Renaming onto an
+    /// existing group replaces that group, so the user is asked first.
+    pub fn change_group_name(&self, old_group: &str, new_group: &str) -> bool {
+        if old_group == new_group || !self.has_group(old_group) {
+            return false;
+        }
+
+        let overwrite = self.has_group(new_group);
+        if overwrite
+            && !confirm(
+                &gettext("Overwrite Existing Group"),
+                &gettext_fmt("There is already a group named '%s'. This action will overwrite it. Continue anyway?", new_group),
+                Some(&self.window),
+                None,
+            )
+        {
+            return false;
+        }
+
         {
             let mut lists = self.notes_lists.borrow_mut();
-            let Some(notes) = lists.shift_remove(old_group) else { return };
+            lists.shift_remove(new_group);
+            let Some(notes) = lists.shift_remove(old_group) else { return false };
             lists.insert(new_group.to_string(), notes);
         }
 
         self.save_note_list();
         self.group_name_changed.emit(&(old_group.to_string(), new_group.to_string()));
+        if overwrite {
+            // a group is gone, so the group lists must be rebuilt
+            self.lists_changed.emit(&());
+        }
+        true
     }
 }
 

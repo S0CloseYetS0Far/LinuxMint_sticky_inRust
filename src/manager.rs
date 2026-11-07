@@ -281,13 +281,17 @@ impl GroupEntry {
 
     fn maybe_done(&self) {
         let Some(group_name) = self.entry.borrow().as_ref().map(|(e, _)| e.text().to_string()) else { return };
-        let old_name = self.name();
-        if !group_name.is_empty() && group_name != old_name {
-            *self.name.borrow_mut() = group_name.clone();
-            self.file_handler.change_group_name(&old_name, &group_name);
-        }
-
+        // Put the label back first: the rename may ask a question, which takes the focus from the entry.
         self.clean_up();
+
+        let old_name = self.name();
+        if !group_name.is_empty() && group_name != old_name && self.file_handler.change_group_name(&old_name, &group_name) {
+            *self.name.borrow_mut() = group_name;
+            if let Some(content) = self.content.borrow_mut().take() {
+                unsafe { content.destroy() };
+            }
+            self.generate_content();
+        }
     }
 
     fn clean_up(&self) {
