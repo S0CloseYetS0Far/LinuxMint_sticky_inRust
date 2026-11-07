@@ -7,7 +7,80 @@ This is a port of [linuxmint/sticky](https://github.com/linuxmint/sticky) from P
 
 ![img](https://linuxmint.com/pictures/screenshots/uma/sticky.png)
 
-## Source layout
+## Python vs Rust
+
+Both versions were run on the same machine with the same settings and the same `notes.json`, which has 5 notes with a checklist, bullets and a link. Each was run 11 times and the first run was not counted. The tables show the median of the other 10.
+
+| | Python ([linuxmint/sticky](https://github.com/linuxmint/sticky)) | Rust (this repo) | Difference |
+|---|---|---|---|
+| **Startup time** (launch → first note on screen) | 258 ms | 98 ms | **2.6× faster** |
+| **RAM, RSS** (all memory the process has mapped in) | 106.5 MiB | 79.1 MiB | −27.4 MiB (−26 %) |
+| **RAM, PSS** (shared libraries split between the processes using them) | 89.5 MiB | 67.4 MiB | −22.1 MiB (−25 %) |
+| **RAM, private** (memory only this process uses) | 81.8 MiB | 62.3 MiB | −19.5 MiB (−24 %) |
+| **Program size on disk** | 120 KiB of `.py` files, plus the `__pycache__` bytecode written on first run | 2.3 MiB, one stripped binary | |
+| **Extra packages needed to run it** | about 26.7 MiB (see below) | none | −26.7 MiB |
+| **Lines of code** | 3,301 (5 files) | 5,442 (14 files, including tests) | |
+
+The packages that only the Python version needs, with their installed sizes from `dpkg`:
+
+| Package | Size |
+|---|---|
+| Python 3.14 interpreter and standard library (`python3`, `python3-minimal`, `python3.14`, `python3.14-minimal`, `libpython3.14-minimal`, `libpython3.14-stdlib`, `libpython3-stdlib`) | 23.7 MiB |
+| PyGObject and its typelibs (`python3-gi`, `libgirepository-2.0-0`, `gir1.2-glib-2.0`, `gir1.2-gtk-3.0`, `gir1.2-xapp-1.0`, `gir1.2-gspell-1`) | 2.8 MiB |
+| `python3-xapp` | 0.3 MiB |
+
+Both versions also need the same shared libraries (GTK 3, libxapp, gspell) and the same data files (icons, CSS, the manager UI and translations, about 76 KiB without the translations). Those are left out of the comparison.
+
+Python is usually installed on Linux Mint anyway, because other system tools use it. So on Mint the saving is mostly in startup time and RAM, and on a minimal system it is also the 26.7 MiB of extra packages.
+
+<details>
+<summary>How it was measured</summary>
+
+- **Machine:** Intel Core i5-10600K, 16 GB RAM, Ubuntu 26.04 in WSL2 (WSLg X server), GTK 3.24, `GDK_BACKEND=x11`.
+- **Builds:** Python from `linuxmint/sticky` master, run with `python3 sticky.py`. Rust from this repo built with `cargo build --release` (LTO) and stripped.
+- **Each run:** a fresh D-Bus session (`dbus-run-session`), a fresh config folder and warm disk caches. The settings were `first-run=false`, `show-manager=false` and `automatic-backups=false`.
+- **Startup:** the time from starting the process until the first sticky window is reported as `IsViewable` by `xwininfo`, which was polled in a loop.
+- **RAM:** read from `/proc/<pid>/smaps_rollup` 3 seconds after the first window appeared.
+- **Accuracy:** expect different absolute numbers on a real Mint desktop. The gap between the two versions comes mostly from the Python interpreter, PyGObject and importing the modules, and that part does not depend on the desktop.
+
+</details>
+
+## Project structure
+
+```
+LinuxMint_sticky_inRust/
+├── Cargo.toml, Cargo.lock      crate manifest (gtk-rs 0.18, serde_json, regex, gettext-rs, …)
+├── build.rs                    links libxapp and gspell through pkg-config
+├── src/
+│   ├── main.rs                 entry point: sets up translations, runs the app
+│   ├── app.rs                  the GtkApplication: command line, D-Bus, tray icon, notes, menus
+│   ├── note.rs                 one note window: title, color, text view, shortcuts, menus
+│   ├── note_buffer.rs          the note text: formatting tags, checklists, bullets, links, undo/redo
+│   ├── check_box.rs            the check box used in checklists
+│   ├── manager.rs              the notes manager: groups, previews, search, drag and drop
+│   ├── file_handler.rs         loading and saving notes.json, backups, import/export, groups
+│   ├── notes.rs                the notes.json format (keeps key order and unknown keys)
+│   ├── settings_window.rs      preferences and keyboard shortcuts windows
+│   ├── widgets.rs              shared widgets: hover box, confirm and error dialogs
+│   ├── util.rs                 URL detection, note markup parser, Gnote import
+│   ├── signal.rs               a small signal type used between the modules
+│   ├── i18n.rs                 gettext helpers
+│   └── ffi.rs                  hand-written bindings for XApp (StatusIcon, StyleManager) and gspell
+├── usr/
+│   ├── bin/sticky              launcher: runs /usr/lib/sticky/sticky
+│   └── share/
+│       ├── glib-2.0/schemas/   org.x.sticky settings schema (same as the Python version)
+│       ├── icons/hicolor/      app and toolbar icons
+│       └── sticky/             manager.ui, sticky.css, check box images
+├── data/                       .desktop file and D-Bus service templates
+├── etc/xdg/autostart/          autostart entry
+├── po/, sticky.pot, makepot    translations
+├── meson.build, meson/         Meson build: runs cargo and installs everything
+├── debian/                     Debian packaging (builds with cargo)
+└── .github/workflows/rust.yml  CI: build, tests under Xvfb, clippy
+```
+
+How the Rust files map to the Python ones:
 
 | File | Python original | What it does |
 |------|-----------------|--------------|
@@ -19,6 +92,7 @@ This is a port of [linuxmint/sticky](https://github.com/linuxmint/sticky) from P
 | `src/file_handler.rs`, `src/notes.rs` | `common.py` (`FileHandler`) | loading, saving, backups |
 | `src/widgets.rs` | `common.py` (`HoverBox`, `confirm`) | shared widgets |
 | `src/util.rs` | `util.py` | URL detection, markup parsing, Gnote import |
+| `src/signal.rs`, `src/i18n.rs`, `src/ffi.rs` | (PyGObject did this) | signals, gettext, C bindings |
 
 ## How to build and install
 
@@ -60,7 +134,7 @@ GSETTINGS_SCHEMA_DIR=usr/share/glib-2.0/schemas STICKY_DATA_DIR=usr/share/sticky
 Sticky offers the following dbus methods and signals:
 - 'ShowNotes' (method): toggles visibility and focus of the notes on the screen
 - 'NewNote' (method): creates a new note containing the provided text
-    - Takes 1 addtional argument containing the text of the new note
+    - Takes 1 additional argument containing the text of the new note
 - 'NewNoteBlank' (method): creates a new empty note
 - 'NotesChanged' (signal): indicates that the notes have changed in some way and the changes have been saved
 
