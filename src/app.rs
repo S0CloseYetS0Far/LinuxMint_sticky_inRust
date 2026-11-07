@@ -334,10 +334,12 @@ impl App {
         let result = connection.register_object(
             &object_path,
             &interface,
-            move |_, _, _, _, method_name, params, _invocation| {
+            move |_, _, _, _, method_name, params, invocation| {
                 if let Some(app) = DBUS_APP.with(|a| a.borrow().upgrade()) {
                     app.dbus_method_call(method_name, &params);
                 }
+                // Every method call must be answered, or callers wait until they time out.
+                invocation.return_value(None);
             },
             |_, _, _, _, _| ().to_variant(),
             |_, _, _, _, _, _| false,
