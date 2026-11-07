@@ -54,6 +54,9 @@ pub fn new(checked: bool) -> gtk::CheckButton {
         if let Some(window) = ew.borrow_mut().take() {
             widget.unregister_window(&window);
             window.destroy();
+            // gdk_window_destroy() releases the reference gdk_window_new() handed us.
+            // Dropping the wrapper would release it a second time and free the window twice.
+            std::mem::forget(window);
         }
     });
 
