@@ -369,7 +369,8 @@ impl App {
         match method_name {
             "ShowNotes" => self.activate_notes(0),
             "NewNote" => {
-                let text = params.child_value(0).str().unwrap_or("").to_string();
+                // The text is plain text: escape '#' so it is not read as note markup.
+                let text = params.child_value(0).str().unwrap_or("").replace('#', "##");
                 let (x, y, direction) = self.get_direction(None);
                 let (x, y) = self.find_note_location(x, y, direction);
                 self.add_note(&NoteInfo { text, x, y, ..Default::default() });
