@@ -431,7 +431,11 @@ impl Note {
     }
 
     fn queue_update(&self, invalidate_cache: bool) {
-        self.invalid_cache.set(invalidate_cache);
+        // A pending text change must survive a later move or resize, so only ever set the flag here;
+        // get_info() clears it once the text has been read back.
+        if invalidate_cache {
+            self.invalid_cache.set(true);
+        }
 
         if let Some(id) = self.changed_timer_id.borrow_mut().take() {
             id.remove();
@@ -554,7 +558,7 @@ impl Note {
             COLORS.iter().map(|(id, name, code)| (*id, gettext(name), *code)).collect();
         colors.sort_by(|a, b| a.1.cmp(&b.1));
         for (color, name, code) in colors {
-            let markup = format!("<span foreground='{code}'>\u{25A6}</span>  {name}");
+            let markup = format!("<span foreground='{code}'>\u{25A6}</span>  {}", glib::markup_escape_text(&name));
             let color = color.to_string();
             menu.append(&self.markup_item(&name, &markup, move |n| n.set_color(&color)));
         }
@@ -574,7 +578,7 @@ impl Note {
         ];
         for (label, markup, tag) in formats {
             let label = gettext(label);
-            let markup = markup.replace("%s", &label);
+            let markup = markup.replace("%s", &glib::markup_escape_text(&label));
             menu.append(&self.markup_item(&label, &markup, move |n| n.buffer.tag_selection(tag)));
         }
 
@@ -582,7 +586,7 @@ impl Note {
 
         for (scale_id, scale_name, scale_value) in FONT_SCALES {
             let name = gettext(scale_name);
-            let markup = format!("<span size='{scale_value}'>{name}</span>");
+            let markup = format!("<span size='{scale_value}'>{}</span>", glib::markup_escape_text(&name));
             menu.append(&self.markup_item(&name, &markup, move |n| n.buffer.tag_selection(scale_id)));
         }
 

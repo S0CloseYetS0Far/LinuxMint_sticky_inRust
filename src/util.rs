@@ -103,40 +103,14 @@ fn flush(tokens: &mut Vec<Token>, pending: &mut String) {
 
 /// Strip the markup from a note's text and lowercase it, for searching.
 pub fn clean_text(text: &str) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let find = |c: char, from: usize| {
-        chars.get(from..).and_then(|rest| rest.iter().position(|&x| x == c)).map(|p| p + from)
-    };
-    let slice = |a: usize, b: usize| -> String {
-        let b = b.min(chars.len());
-        if a >= b {
-            String::new()
-        } else {
-            chars[a..b].iter().collect()
-        }
-    };
-    let starts = |at: usize, s: &str| s.chars().enumerate().all(|(i, c)| chars.get(at + i) == Some(&c));
-
-    let mut current = 0;
-    let mut new_text = String::new();
-    loop {
-        let Some(next) = find('#', current) else {
-            // Same as Python's text[current:-1]
-            new_text.push_str(&slice(current, chars.len().saturating_sub(1)));
-            return new_text.to_lowercase();
-        };
-        new_text.push_str(&slice(current, next));
-        if starts(next, "##") {
-            new_text.push('#');
-            current = next + 2;
-        } else if starts(next, "#check") || starts(next, "#bullet") {
-            current = next + 8;
-        } else if starts(next, "#tag") {
-            current = find(':', next + 6).map(|i| i + 1).unwrap_or(chars.len());
-        } else {
-            current += 1;
-        }
-    }
+    parse_markup(text)
+        .into_iter()
+        .filter_map(|token| match token {
+            Token::Text(t) => Some(t),
+            _ => None,
+        })
+        .collect::<String>()
+        .to_lowercase()
 }
 
 const GNOTE_TO_INTERNAL_MAP: &[(&str, &str)] = &[
@@ -243,7 +217,11 @@ mod tests {
 
     #[test]
     fn cleans_text() {
-        assert_eq!(clean_text("#check:0Buy ##Milk #tag:bold:now#tag:bold:."), "buy #milk now");
+        assert_eq!(clean_text("#check:0Buy ##Milk #tag:bold:now#tag:bold:."), "buy #milk now.");
+        // the last character is searchable
+        assert_eq!(clean_text("Milk"), "milk");
+        // a stray "#" does not repeat text
+        assert_eq!(clean_text("ab#xy"), "ab#xy");
     }
 
     #[test]

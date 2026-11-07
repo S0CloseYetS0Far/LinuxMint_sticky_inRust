@@ -158,7 +158,12 @@ impl App {
         if options.contains("autostart") {
             let settings = gio::Settings::new(SCHEMA);
             if !settings.boolean("autostart") {
-                std::process::exit(0);
+                // Only a fresh instance exits. When Sticky is already running this command line was forwarded
+                // from another process, and quitting here would close the user's notes.
+                if !self.has_activated.get() {
+                    self.gtk_app.quit();
+                }
+                return 0;
             } else {
                 self.autostart_mode.set(true);
             }
@@ -334,10 +339,12 @@ impl App {
         let result = connection.register_object(
             &object_path,
             &interface,
-            move |_, _, _, _, method_name, params, _invocation| {
+            move |_, _, _, _, method_name, params, invocation| {
                 if let Some(app) = DBUS_APP.with(|a| a.borrow().upgrade()) {
                     app.dbus_method_call(method_name, &params);
                 }
+                // Every method call must be answered, or callers wait until they time out.
+                invocation.return_value(None);
             },
             |_, _, _, _, _| ().to_variant(),
             |_, _, _, _, _, _| false,
@@ -362,7 +369,8 @@ impl App {
         match method_name {
             "ShowNotes" => self.activate_notes(0),
             "NewNote" => {
-                let text = params.child_value(0).str().unwrap_or("").to_string();
+                // The text is plain text: escape '#' so it is not read as note markup.
+                let text = params.child_value(0).str().unwrap_or("").replace('#', "##");
                 let (x, y, direction) = self.get_direction(None);
                 let (x, y) = self.find_note_location(x, y, direction);
                 self.add_note(&NoteInfo { text, x, y, ..Default::default() });
@@ -646,8 +654,8 @@ impl App {
         let max_y = workarea.y() + workarea.height();
 
         let settings = self.settings();
-        let x_end = x + settings.uint("default-height") as i32;
-        let y_end = y + settings.uint("default-width") as i32;
+        let x_end = x + settings.uint("default-width") as i32;
+        let y_end = y + settings.uint("default-height") as i32;
 
         if x < min_x || x_end > max_x || y < min_y || y_end > max_y {
             // the calculated location wont work, so put the new note near the top left corner

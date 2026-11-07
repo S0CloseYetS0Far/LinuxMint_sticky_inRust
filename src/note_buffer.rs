@@ -646,20 +646,25 @@ impl NoteBuffer {
         let weak = self.downgrade();
         view.connect_motion_notify_event(move |view, event| {
             let Some(buffer) = weak.upgrade() else { return glib::Propagation::Proceed };
-            if !view.modifier_mask(gdk::ModifierIntent::ExtendSelection).is_empty() {
+            // The mask itself is never empty; what matters is whether those keys are held right now.
+            if view.modifier_mask(gdk::ModifierIntent::ExtendSelection).intersects(event.state()) {
                 return glib::Propagation::Proceed;
             }
             let (x, y) = event.position();
             let (bx, by) = view.window_to_buffer_coords(gtk::TextWindowType::Text, x as i32, y as i32);
-            if let (Some(iter), Some(link)) = (view.iter_at_location(bx, by), buffer.lookup("link")) {
-                if iter.has_tag(&link) {
-                    if let Some(window) = TextViewExt::window(view, gtk::TextWindowType::Text) {
-                        window.set_cursor(gdk::Cursor::from_name(&view.display(), "pointer").as_ref());
-                    }
-                    return glib::Propagation::Stop;
-                }
+            let over_link = match (view.iter_at_location(bx, by), buffer.lookup("link")) {
+                (Some(iter), Some(link)) => iter.has_tag(&link),
+                _ => false,
+            };
+            if let Some(window) = TextViewExt::window(view, gtk::TextWindowType::Text) {
+                let name = if over_link { "pointer" } else { "text" };
+                window.set_cursor(gdk::Cursor::from_name(&view.display(), name).as_ref());
             }
-            glib::Propagation::Proceed
+            if over_link {
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
         });
 
         let weak = self.downgrade();

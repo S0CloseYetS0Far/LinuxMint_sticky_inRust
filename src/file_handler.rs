@@ -103,7 +103,16 @@ impl FileHandler {
     pub fn load_notes(&self) {
         match std::fs::read_to_string(config_path()).map_err(|e| e.to_string()).and_then(|d| parse_notes(&d).map_err(|e| e.to_string())) {
             Ok(lists) => *self.notes_lists.borrow_mut() = lists,
-            Err(e) => eprintln!("sticky: could not read {}: {e}", config_path().display()),
+            Err(e) => {
+                // Keep the unreadable file: the next save would otherwise replace it and the notes would be gone.
+                let path = config_path();
+                let kept = config_dir().join(format!("notes.json.unreadable-{}", now()));
+                eprintln!("sticky: could not read {}: {e}", path.display());
+                match std::fs::rename(&path, &kept) {
+                    Ok(()) => eprintln!("sticky: the file was moved to {}", kept.display()),
+                    Err(e) => eprintln!("sticky: could not move it aside: {e}"),
+                }
+            }
         }
     }
 
@@ -318,6 +327,11 @@ impl FileHandler {
             backup_list.add(&label);
         }
 
+        // Browse mode does not pick a row by itself; without one, Restore did nothing. Start on the newest backup.
+        if let Some(newest) = backup_list.row_at_index(backups.len() as i32 - 1) {
+            backup_list.select_row(Some(&newest));
+        }
+
         scrolled.show_all();
 
         let response = dialog.run();
@@ -391,15 +405,39 @@ impl FileHandler {
         self.lists_changed.emit(&());
     }
 
-    pub fn change_group_name(&self, old_group: &str, new_group: &str) {
+    /// Rename a group. Returns false if nothing was renamed. Renaming onto an
+    /// existing group replaces that group, so the user is asked first.
+    pub fn change_group_name(&self, old_group: &str, new_group: &str) -> bool {
+        if old_group == new_group || !self.has_group(old_group) {
+            return false;
+        }
+
+        let overwrite = self.has_group(new_group);
+        if overwrite
+            && !confirm(
+                &gettext("Overwrite Existing Group"),
+                &gettext_fmt("There is already a group named '%s'. This action will overwrite it. Continue anyway?", new_group),
+                Some(&self.window),
+                None,
+            )
+        {
+            return false;
+        }
+
         {
             let mut lists = self.notes_lists.borrow_mut();
-            let Some(notes) = lists.shift_remove(old_group) else { return };
+            lists.shift_remove(new_group);
+            let Some(notes) = lists.shift_remove(old_group) else { return false };
             lists.insert(new_group.to_string(), notes);
         }
 
         self.save_note_list();
         self.group_name_changed.emit(&(old_group.to_string(), new_group.to_string()));
+        if overwrite {
+            // a group is gone, so the group lists must be rebuilt
+            self.lists_changed.emit(&());
+        }
+        true
     }
 }
 
