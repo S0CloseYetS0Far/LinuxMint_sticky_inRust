@@ -327,6 +327,11 @@ impl FileHandler {
             backup_list.add(&label);
         }
 
+        // Browse mode does not pick a row by itself; without one, Restore did nothing. Start on the newest backup.
+        if let Some(newest) = backup_list.row_at_index(backups.len() as i32 - 1) {
+            backup_list.select_row(Some(&newest));
+        }
+
         scrolled.show_all();
 
         let response = dialog.run();
