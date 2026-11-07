@@ -192,6 +192,8 @@ Signing off means you state that:
 
 The PR template asks you to confirm these points. A `Co-Authored-By` line for an AI tool is fine in addition to your sign-off, but it never replaces it.
 
+The **Sign-off** check runs on every pull request. It fails if any commit, merge commits aside, lacks a `Signed-off-by` line with that commit author's email. The log lists the commits without one.
+
 ### Other rules
 
 - One fix or feature per pull request, and one commit per logical change.
